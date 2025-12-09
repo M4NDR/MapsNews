@@ -1,0 +1,46 @@
+/* src/styles/LoadingIndicator.css */
+@import './_variables.css';
+
+.loading-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  gap: 16px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--card-border);
+  border-top: 4px solid var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loading-text {
+  margin: 0;
+  font-style: italic;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* === ТЁМНАЯ ТЕМА — РУЧНАЯ === */
+body[data-theme="dark"] .spinner {
+  border-color: #475569;
+  border-top-color: var(--primary-light);
+}
+
+/* === ТЁМНАЯ ТЕМА — АВТО (prefers-color-scheme) === */
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .spinner {
+    border-color: #475569;
+    border-top-color: var(--primary-light);
+  }
+}

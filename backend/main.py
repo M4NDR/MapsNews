@@ -1,20 +1,23 @@
-# backend/main.py — 100% РАБОТАЕТ: ПАРСИТ, СОХРАНЯЕТ, ВЫДАЁТ
+import feedparser
+from bs4 import BeautifulSoup
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import requests
-import xml.etree.ElementTree as ET
 from datetime import datetime
 import re
-from bs4 import BeautifulSoup
-import trafilatura
-from typing import Optional
+from typing import Optional, List
 import threading
 import time
-import sqlite3
-import json
 import os
+import logging
 
-app = FastAPI(title="MapsNews API — ФИНАЛЬНО РАБОТАЕТ")
+import database
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="MapsNews API — news29.ru (Fixed)")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,238 +26,337 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# === КОНФИГУРАЦИЯ ===
 RSS_URL = "https://www.news29.ru/rss"
-HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-GEOCODER_API_KEY = "686e5b6d-df4e-49de-a918-317aa589c34c"
-DB_NAME = "news.db"
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+GEOCODER_API_KEY = os.getenv("GEOCODER_API_KEY", "686e5b6d-df4e-49de-a918-317aa589c34c")
+ARKH_OBLAST_BBOX = "35.5,62.8~49.0,67.5"
+UPDATE_INTERVAL = 900 # 15 минут
 
-# ← КАТЕГОРИИ
-CATEGORIES = {
-    "дтп": ["дтп", "авария", "столкновение", "наезд", "газель", "трасса", "перекресток"],
-    "политика": ["мэр", "губернатор", "депутат", "выборы", "совет", "закон"],
-    "общество": ["жители", "горожане", "праздник", "акция", "митинг"],
-    "экономика": ["бюджет", "инвестиции", "строительство", "жк", "аквилон"],
-    "спорт": ["матч", "турнир", "победа", "спортсмен", "стадион"],
-    "культура": ["театр", "концерт", "выставка", "музей", "фестиваль"],
-    "происшествия": ["пожар", "наводнение", "чп", "спасатели", "мчс"]
-}
+# === ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ===
+def clean_text(text: str) -> str:
+    """Очищает текст от лишних пробелов."""
+    return re.sub(r'\s+', ' ', text or "").strip()
 
-# ← БД
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    conn.execute("PRAGMA journal_mode=WAL")
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS news (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            url TEXT UNIQUE,
-            title TEXT,
-            preview TEXT,
-            date TEXT,
-            source TEXT,
-            image TEXT,
-            category TEXT,
-            content TEXT,
-            coords TEXT
-        )
-    ''')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_date ON news (date DESC)')
-    conn.commit()
-    conn.close()
-    print(f"[БД] Создана: {DB_NAME}")
-
-# ← СОХРАНЕНИЕ — ИСПРАВЛЕНО!
-def save_news(data: dict, content: str = None, coords: list = None):
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute('''
-            INSERT OR REPLACE INTO news 
-            (url, title, preview, date, source, image, category, content, coords)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (
-            data["url"], data["title"], data["preview"], data["date"],
-            data["source"], data["image"], data["category"],
-            content, json.dumps(coords) if coords else None
-        ))
-        conn.commit()
-        conn.close()
-        print(f"  → + {data['title'][:50]}...")
-        return True
-    except Exception as e:
-        print(f"[SAVE ERROR] {e}")
-        return False
-
-def get_news_count():
-    try:
-        conn = sqlite3.connect(DB_NAME)
-        c = conn.cursor()
-        c.execute("SELECT COUNT(*) FROM news")
-        count = c.fetchone()[0]
-        conn.close()
-        return count
-    except:
-        return 0
-
-# ← ПАРСИНГ ДАТЫ — ИСПРАВЛЕНО ДЛЯ news29.ru!
 def parse_pubdate(date_str: str) -> str:
+    """Парсит дату из RSS."""
     if not date_str:
         return datetime.now().strftime("%Y-%m-%d")
-    # news29.ru отдаёт: "Wed, 06 Nov 2025 12:34:56 +0300"
-    date_str = date_str.strip()
-    # Убираем таймзону +0300
-    date_str = re.sub(r' [+-]\d{4}$', '', date_str)
+    date_str = re.sub(r' [+-]\d{4}$', '', date_str.strip())
     try:
         dt = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S")
         return dt.strftime("%Y-%m-%d")
     except:
         return datetime.now().strftime("%Y-%m-%d")
 
-# ← ПАРСИНГ RSS — 100% РАБОТАЕТ
-def parse_rss_and_fill():
-    print(f"[RSS] ЗАГРУЗКА... {datetime.now().strftime('%H:%M:%S')}")
+def extract_content_with_bs4(url: str) -> str:
+    """
+    Загружает страницу и извлекает контент с сохранением форматирования (абзацев).
+    """
     try:
-        resp = requests.get(RSS_URL, headers=HEADERS, timeout=30)
-        if resp.status_code != 200:
-            print(f"[RSS] Ошибка: {resp.status_code}")
-            return
-        print(f"[RSS] Загружено {len(resp.content)} байт")
+        resp = requests.get(url, headers=HEADERS, timeout=15)
+        resp.raise_for_status()
+        resp.encoding = resp.apparent_encoding 
+        soup = BeautifulSoup(resp.text, 'html.parser')
 
-        xml = resp.content.decode('windows-1251', errors='replace')
-        xml = re.sub(r'<!\[CDATA\[|\]\]>', '', xml)
-        root = ET.fromstring(xml)
-        items = root.findall(".//item")
-        print(f"[RSS] Найдено {len(items)} новостей")
+        # Убираем скрипты и стили
+        for script in soup(["script", "style"]):
+            script.decompose()
 
+        content_div = soup.find('div', class_='news-text') or soup.find('div', class_='fulltext') or soup.find('article')
+        
+        final_html = ""
+        
+        if content_div:
+            # Если нашли контейнер, пробуем извлечь текст с учетом <br>
+            # Заменяем двойные <br> на параграфы
+            for br in content_div.find_all("br"):
+                br.replace_with("\n")
+            
+            text_content = content_div.get_text(separator="\n", strip=True)
+            paragraphs = [p.strip() for p in text_content.split("\n") if len(p.strip()) > 20]
+            
+            final_html = "".join([f"<p>{p}</p>\n" for p in paragraphs])
+        
+        else:
+            # Fallback: ищем все P
+            tags = soup.find_all('p')
+            for tag in tags:
+                text = tag.get_text(strip=True)
+                if len(text) > 20: 
+                    final_html += f"<p>{text}</p>\n"
+            
+            if not final_html:
+                 # Super fallback
+                text = soup.get_text(separator='\n', strip=True)
+                lines = [line for line in text.split('\n') if len(line) > 50]
+                final_html = "".join([f"<p>{line}</p>\n" for line in lines])
+
+        return final_html or "Текст не найден"
+
+    except Exception as e:
+        logger.error(f"[BS4] Ошибка загрузки контента: {e}")
+        return ""
+
+# === СЛОВАРИ И ДАННЫЕ ===
+CATEGORIES = {
+    "дтп": ["дтп", "авария", "столкновение", "сбил", "наезд", "опрокинулся", "лобовое", "гибдд", "гаи", "перекресток"],
+    "происшествия": ["пожар", "возгорание", "мчс", "чп", "утонул", "пропал", "наводнение", "взрыв", "обрушение", "скорая", "смерть"],
+    "криминал": ["полиция", "задержан", "вор", "кража", "грабеж", "наркотики", "суд", "приговор", "уголовное дело"],
+    "политика": ["мэр", "губернатор", "депутат", "дума", "выборы", "администрация"],
+    "жкх": ["отопление", "тепло", "вода", "лифт", "мусор", "тариф", "жкх", "прорыв трубы"],
+    "экономика": ["бюджет", "инвестиции", "стройка", "аквилон", "порт", "экономия", "лдк"],
+    "общество": ["жители", "праздник", "акция", "ветеран", "школа", "больница", "поликлиника"],
+    "спорт": ["водник", "матч", "хоккей", "стадион труд", "турнир", "победа"],
+    "культура": ["театр", "концерт", "фестиваль", "музей", "выставка", "чумабаровка"],
+    "образование": ["сафу", "сгму", "университет", "студент", "школа", "лицей", "егэ"]
+}
+
+KNOWN_PLACES = {
+    "архангельский суд": "Архангельск, ул. Гайдара, 8",
+    "областной суд": "Архангельск, ул. Гайдара, 8",
+    "северодвинский суд": "Северодвинск, ул. Ломоносова, 73",
+    "ломоносовский суд": "Архангельск, пр. Ломоносова, 202",
+    "октябрьский суд": "Архангельск, ул. Гагарина, 11",
+    "исакогорский суд": "Архангельск, ул. Дрейера, 99",
+    "соломбальский суд": "Архангельск, пр. Никольский, 15",
+    "драмтеатр": "Архангельск, площадь Ленина, 1",
+    "драмтеатра": "Архангельск, площадь Ленина, 1",
+    "стадион труд": "Архангельск, ул. Розинга, 19",
+    "кинотеатр мир": "Архангельск, пр. Троицкий, 55",
+    "дк строитель": "Северодвинск, ул. Советская, 10",
+    "дворец молодежи строитель": "Северодвинск, ул. Советская, 10",
+    "поликлиника №3": "Архангельск, ул. Победы, 67",
+    "поликлиника 3": "Архангельск, ул. Победы, 67",
+    "поликлиника №2": "Архангельск, пр. Ленинградский, 261",
+    "поликлиника 2": "Архангельск, пр. Ленинградский, 261",
+    "поликлиника №1": "Архангельск, пр. Ломоносова, 292",
+}
+
+WHITELIST_ARCHANGELSK = {
+    'тц "макси"', 'макси', 'тц макси', 'макси молл',
+    'тц "рико"', 'рико', 'тц рико',
+    'тц "европа"', 'европа сити молл', 'европа', 'тц европа',
+    'тц "сигма"', 'сигма',
+    'тц "титан арена"', 'титан арена', 'титан',
+    'тц "дельта"', 'дельта',
+    'тц "солнечный"', 'солнечный',
+    'трк "гранд плаза"', 'гранд плаза',
+    'тц "на троицком"', 'на троицком',
+    'тц "морской"', 'морской',
+    'тц "премьер"', 'премьер',
+    'первая городская больница', '1 гб', 'гб №1', 'городская больница №1',
+    'семашко', 'больница семашко',
+    'аокб', 'архангельская областная клиническая больница',
+    'областная больница', 'аоκб',
+    'детская областная больница', 'докб', 'детская окб',
+    'поликлиника №1', 'поликлиника №2', 'поликлиника №3', 'поликлиника №4',
+    'поликлиника №6', 'поликлиника №7', 'поликлиника №14',
+    'городская поликлиника №1', 'гп №1', 'гп №2',
+    'детская поликлиника №1', 'детская поликлиника №2', 'детская поликлиника №3',
+    'поликлиника литвинова', 'стоматологическая поликлиника',
+    'аптека "горизонт"', 'горизонт',
+    'аптека "максифарм"', 'максифарм',
+    'аптека "ригла"', 'ригла',
+    'аптека "столички"', 'столички',
+    'аптека "здравсити"',
+    'детский сад №', 'д/с №', 'дс №',
+    'школа №', 'гимназия №', 'лицей №',
+    'сафу', 'северный медицинский университет',
+    'поморский университет', 'с(а)фу',
+    'лвт', 'ломоносовский дворец творчества',
+    'дк', 'дом культуры',
+    'драмтеатр', 'театр драмы', 'театр кукол',
+    'кинотеатр "мираж"', 'мираж синема', 'мираж',
+    'морской-речной вокзал', 'морвокзал',
+    'северный рынок', 'центральный рынок', 'привокзальный рынок'
+}
+
+WHITELIST_LOWER = {item.lower().strip('"') for item in WHITELIST_ARCHANGELSK}
+
+# === ГЕОКОДЕР ===
+from natasha import (
+    Segmenter, MorphVocab, AddrExtractor, NewsEmbedding, NewsNERTagger, Doc
+)
+
+segmenter = Segmenter()
+morph_vocab = MorphVocab()
+emb = NewsEmbedding()
+ner_tagger = NewsNERTagger(emb)
+addr_extractor = AddrExtractor(morph_vocab)
+
+def extract_address(text: str) -> Optional[str]:
+    text_lower = text.lower()
+    for key, addr in KNOWN_PLACES.items():
+        if key in text_lower:
+            return addr
+    for item in WHITELIST_LOWER:
+        if item in text_lower:
+            if "архангельск" not in item and "северодвинск" not in item:
+                 return f"Архангельск, {item}"
+            return item
+    try:
+        doc = Doc(text)
+        doc.segment(segmenter)
+        doc.tag_ner(ner_tagger)
+        for span in doc.spans:
+            val = span.text.strip('«»"\'')
+            val_lower = val.lower()
+            ignore_list = [
+                "архангельск", "архангельская область", "область", "россия", "северодвинск", "поморье",
+                "регион", "ненецкий автономный округ", "нао", "рф",
+                "news29", "news29.ru", "сбер", "сбербанк", "мегафон", "мтс", "билайн", "теле2",
+                "vk", "вконтакте", "telegram", "facebook", "instagram", "youtube", "megapteka.ru"
+            ]
+            if any(ign in val_lower for ign in ignore_list): continue
+            if span.type == 'ORG' or span.type == 'LOC':
+                 if len(val) > 3: return val
+        matches = list(addr_extractor(text))
+        for match in matches:
+            fact = match.fact
+            parts = []
+            if hasattr(fact, 'street') and fact.street: parts.append(fact.street)
+            if hasattr(fact, 'building') and fact.building: parts.append(fact.building)
+            if parts: return ", ".join(parts)
+    except Exception as e:
+        logger.error(f"[NATASHA NER] Ошибка: {e}")
+    return "Архангельск"
+
+def get_coords_from_yandex(query: str) -> Optional[List[float]]:
+    if not query: return None
+    try:
+        url = (
+            f"https://geocode-maps.yandex.ru/1.x/?apikey={GEOCODER_API_KEY}"
+            f"&geocode={requests.utils.quote(query)}&format=json&results=1"
+            f"&bbox={ARKH_OBLAST_BBOX}&rspn=1"
+        )
+        logger.info(f"[GEOCODER] → {query}")
+        r = requests.get(url, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            members = data["response"]["GeoObjectCollection"]["featureMember"]
+            if members:
+                lon, lat = map(float, members[0]["GeoObject"]["Point"]["pos"].split())
+                logger.info(f"[GEOCODER] УСПЕХ → [{lat:.6f}, {lon:.6f}]")
+                return [lat, lon]
+        logger.info(f"[GEOCODER] Не найдено")
+    except Exception as e:
+        logger.error(f"[GEOCODER] Ошибка: {e}")
+    return None
+
+def parse_rss_and_fill():
+    logger.info("[RSS] Загрузка новостей через FEEDPARSER...")
+    try:
+        feed = feedparser.parse(RSS_URL)
+        if feed.bozo:
+            logger.warning(f"[RSS] Ошибка парсинга XML: {feed.bozo_exception}")
         added = 0
-        for item in items:
+        for entry in feed.entries:
             try:
-                url = item.find("link").text.strip() if item.find("link") is not None else None
-                if not url:
-                    continue
+                url = clean_text(entry.get("link", ""))
+                if not url: continue
+                title = clean_text(entry.get("title", "Без заголовка"))
+                
+                raw_desc = entry.get("description", "") or entry.get("summary", "")
+                desc_soup = BeautifulSoup(raw_desc, 'html.parser')
+                desc_clean = desc_soup.get_text(strip=True)
+                preview = desc_clean[:300] + ("..." if len(desc_clean) > 300 else "")
+                
+                date_str = entry.get("published", "")
+                date = parse_pubdate(date_str)
+                
+                image = None
+                for enc in entry.get("enclosures", []):
+                    if enc.get("type", "").startswith("image/"):
+                        image = enc.get("href")
+                        break
+                if not image and "media_content" in entry:
+                    image = entry.media_content[0].get("url")
 
-                title = item.find("title").text.strip() if item.find("title") is not None else "Без названия"
-                desc = item.find("description").text or ""
-                preview = re.sub(r'<.*?>', '', desc).strip()[:300] + ("..." if len(re.sub(r'<.*?>', '', desc).strip()) > 300 else "")
-
-                pub_date = item.find("pubDate").text if item.find("pubDate") is not None else ""
-                date = parse_pubdate(pub_date)
-
-                image = item.find("enclosure")
-                image_url = image.get("url") if image is not None else None
-
-                cat_text = (title + " " + preview).lower()
+                text_for_cat = (title + " " + preview).lower()
                 category = "другое"
-                for cat, kws in CATEGORIES.items():
-                    if any(kw in cat_text for kw in kws):
+                for cat, words in CATEGORIES.items():
+                    if any(w in text_for_cat for w in words):
                         category = cat
                         break
 
-                news_data = {
-                    "url": url,
-                    "title": title,
-                    "preview": preview,
-                    "date": date,
-                    "source": "news29.ru",
-                    "image": image_url,
-                    "category": category
-                }
-
-                if save_news(news_data):
+                if database.save_news({"url": url, "title": title, "preview": preview, "date": date, "image": image, "category": category}):
                     added += 1
-
             except Exception as e:
-                print(f"  → [ОШИБКА НОВОСТИ] {e}")
-                continue
-
-        print(f"[ГОТОВО] ДОБАВЛЕНО {added} НОВОСТЕЙ → ВСЕГО: {get_news_count()}")
-
+                logger.error(f"[RSS] Ошибка новости: {e}")
+        logger.info(f"[RSS] Добавлено {added} новостей (всего: {database.get_news_count()})")
     except Exception as e:
-        print(f"[RSS КРИТИЧЕСКИ] {e}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"[RSS] Критическая ошибка: {e}")
 
-# ← АВТОПАРСЕР
-def auto_parser():
-    init_db()
-    time.sleep(2)
-    if get_news_count() == 0:
-        print(f"[БД] ПУСТАЯ → ПАРСЮ RSS!")
-        parse_rss_and_fill()
-    else:
-        print(f"[БД] Уже {get_news_count()} новостей")
-
+def background_geocoder():
+    logger.info("[GEOCODER] Запущен (NATASHA + YANDEX + BS4 Content)")
     while True:
-        time.sleep(600)
+        try:
+            items = database.get_uncoded_news(limit=6)
+            if not items:
+                time.sleep(60)
+                continue
+            for item in items:
+                try:
+                    content = item.get("content")
+                    if not content or content == "Ошибка загрузки":
+                        content = extract_content_with_bs4(item["url"])
+                    
+                    clean_content_for_geo = BeautifulSoup(content, "html.parser").get_text(separator=" ", strip=True)
+                    full_text = f"{item['title']} {clean_content_for_geo}"
+                    address = extract_address(full_text)
+                    
+                    coords = None
+                    if address:
+                        coords = get_coords_from_yandex(address)
+                    
+                    database.update_news_content_and_coords(item["id"], content, coords, address=address)
+                    
+                    log_addr = address or '—'
+                    log_coords = coords or 'None'
+                    logger.info(f"[GEO] {item['id']} → {log_addr} → {log_coords}")
+                    time.sleep(1.5)
+                except Exception as e:
+                    logger.error(f"[GEOCODER] Ошибка {item.get('id', '?')}: {e}")
+            time.sleep(10)
+        except Exception as e:
+            logger.error(f"[GEOCODER LOOP] {e}")
+            time.sleep(60)
+
+def auto_parser():
+    database.init_db()
+    # Первая загрузка через 2 секунды после старта, чтобы не блочить
+    time.sleep(2)
+    parse_rss_and_fill()
+    while True:
+        time.sleep(UPDATE_INTERVAL)
         parse_rss_and_fill()
 
-threading.Thread(target=auto_parser, daemon=True).start()
+@app.on_event("startup")
+async def startup():
+    threading.Thread(target=auto_parser, daemon=True).start()
+    threading.Thread(target=background_geocoder, daemon=True).start()
 
-# ← ЭНДПОИНТЫ
 @app.get("/force")
 def force():
     parse_rss_and_fill()
-    return {"status": "OK", "total": get_news_count()}
-
-@app.get("/debug")
-def debug():
-    return {
-        "db": os.path.exists(DB_NAME),
-        "count": get_news_count(),
-        "force": "/force"
-    }
+    return {"status": "OK", "новостей": database.get_news_count()}
 
 @app.get("/")
-def home():
-    return {"status": "РАБОТАЕТ!", "новостей": get_news_count(), "debug": "/debug"}
+def root():
+    return {"status": "работает", "новостей": database.get_news_count()}
 
 @app.get("/news")
-def get_news(category: Optional[str] = None, limit: int = Query(200, le=1000)):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    query = "SELECT id, title, url, preview, date, source, image, category FROM news"
-    params = []
-    if category:
-        query += " WHERE category = ?"
-        params.append(category.lower())
-    query += " ORDER BY date DESC, id DESC LIMIT ?"
-    params.append(limit)
-    c.execute(query, params)
-    rows = c.fetchall()
-    conn.close()
-    return [{"id": r[0], "title": r[1], "url": r[2], "preview": r[3], "date": r[4], "source": r[5], "image": r[6], "category": r[7]} for r in rows]
+def news(category: Optional[str] = None, limit: int = Query(200, le=1000)):
+    return database.get_all_news(limit, category)
 
 @app.get("/news/{news_id}/full")
 def full(news_id: int):
-    conn = sqlite3.connect(DB_NAME)
-    c = conn.cursor()
-    c.execute("SELECT * FROM news WHERE id = ?", (news_id,))
-    row = c.fetchone()
-    conn.close()
-    if not row:
+    item = database.get_news_by_id(news_id)
+    if not item:
         raise HTTPException(404)
-    item = {"url": row[1], "title": row[2], "content": row[8], "coords": json.loads(row[9]) if row[9] else None}
-    if item["content"]:
-        return {"content": item["content"], "coords": item["coords"]}
-
-    html = requests.get(item["url"], headers=HEADERS).text
-    text = trafilatura.extract(html) or "<p>Текст недоступен</p>"
-    soup = BeautifulSoup(text, 'html.parser')
-    text = str(soup)
-
-    # ГЕОКОД
-    coords = None
-    patterns = [r'ул\.?\s+[А-Яа-яЁё]+', r'улица\s+[А-Яа-яЁё]+', r'пр\.?\s+[А-Яа-яЁё]+']
-    found = re.findall("|".join(patterns), item["title"] + " " + text, re.IGNORECASE)
-    if found:
-        query = "Архангельск " + " ".join(found[:2])
-        try:
-            url = f"https://geocode-maps.yandex.ru/1.x/?apikey={GEOCODER_API_KEY}&geocode={query}&format=json"
-            pos = requests.get(url, timeout=5).json()["response"]["GeoObjectCollection"]["featureMember"][0]["GeoObject"]["Point"]["pos"]
-            lon, lat = pos.split()
-            coords = [float(lat), float(lon)]
-        except:
-            pass
-
-    save_news(item, content=text, coords=coords)
-    return {"content": text, "coords": coords}
+    if not item["content"]:
+        content = extract_content_with_bs4(item["url"])
+        database.update_news_content_and_coords(item["id"], content, item["coords"])
+        item["content"] = content
+    return item

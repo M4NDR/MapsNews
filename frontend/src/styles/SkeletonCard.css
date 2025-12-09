@@ -1,0 +1,70 @@
+/* src/styles/SkeletonCard.css */
+@import './_variables.css';
+
+.skeleton-card {
+  display: flex;
+  gap: 20px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+.skeleton-image {
+  width: 140px;
+  height: 100px;
+  background: #e2e8f0;
+  border-radius: var(--radius-md);
+  animation: pulse 1.5s infinite;
+}
+
+.skeleton-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-title {
+  height: 28px;
+  width: 80%;
+  background: #e2e8f0;
+  border-radius: var(--radius-sm);
+  animation: pulse 1.5s infinite;
+}
+
+.skeleton-text {
+  height: 18px;
+  width: 100%;
+  background: #e2e8f0;
+  border-radius: var(--radius-sm);
+  animation: pulse 1.5s infinite;
+}
+
+.skeleton-text.short {
+  width: 60%;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+body.dark-mode .skeleton-image,
+body.dark-mode .skeleton-title,
+body.dark-mode .skeleton-text {
+  background: #334155;
+}
+body[data-theme="dark"] .skeleton-image,
+body[data-theme="dark"] .skeleton-title,
+body[data-theme="dark"] .skeleton-text {
+  background: #334155;
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) .skeleton-image,
+  body:not([data-theme="light"]) .skeleton-title,
+  body:not([data-theme="light"]) .skeleton-text {
+    background: #334155;
+  }
+}

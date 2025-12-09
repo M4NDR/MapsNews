@@ -1,0 +1,25 @@
+/* src/styles/SearchInput.css */
+@import './_variables.css';
+
+.search-input {
+  padding: 14px 24px;
+  border: 1px solid var(--card-border);
+  border-radius: var(--radius-full);
+  width: 100%;
+  max-width: 360px;
+  font-size: 1rem;
+  background: #e5e7eb;
+  /* Darker gray */
+  color: var(--text-primary);
+  outline: none;
+  transition: var(--transition);
+}
+
+.search-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.search-input::placeholder {
+  color: var(--text-muted);
+}

@@ -1,0 +1,88 @@
+/* src/styles/HomePage.css */
+.home-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 20px 40px 20px;
+  /* Убрал отступ сверху, так как шапка теперь снаружи */
+}
+
+/* Шапка на всю ширину */
+.header {
+  width: calc(100% - 40px);
+  /* Отступы по бокам */
+  margin: 20px auto 40px;
+  /* Отступ сверху и центрирование */
+  padding: 80px 40px 60px;
+  /* Background image is inline in JS */
+  color: white;
+  border-radius: 40px;
+  /* Мягкие углы */
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  /* Тень для объема */
+  overflow: hidden;
+  /* Параллакс эффект */
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  /* Высота героя */
+}
+
+.header h1 {
+  font-size: 5rem;
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  /* Светло-синий градиент, чтобы читался на темном */
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  /* Fallback */
+  margin-bottom: 30px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-align: center;
+  text-shadow: none;
+  /* Убираем тень текста, так как это градиент */
+  filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.5));
+  /* Тень для блока с градиентом */
+}
+
+.header-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  /* max-width убрали, чтобы тянулось */
+  margin: 0;
+  background: var(--bg-card);
+  padding: 24px;
+  border-radius: 0;
+  /* Убрали скругление, если хотим совсем на всю, или оставим? Пользователь просил "растянута на весь экран". */
+  /* Лучше сделать красивый блок управления на всю ширину с отступами */
+  box-shadow: var(--shadow-sm);
+  border-top: none;
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.1);
+  /* Полупрозрачная подложка */
+  backdrop-filter: blur(10px);
+  /* Блюр эффект */
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  /* Flex wrap для адаптивности при изменении масштаба */
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Адаптив */
+@media (min-width: 768px) {
+  .header-controls {
+    flex-direction: row;
+    justify-content: space-between;
+    /* Распределяем элементы */
+    padding: 20px 40px;
+    border-radius: 0;
+  }
+}

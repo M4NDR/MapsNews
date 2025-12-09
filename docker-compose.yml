@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    container_name: mapsnews-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - BOT_TOKEN=${BOT_TOKEN}
+      - WEBAPP_URL=${WEBAPP_URL}
+      - GEOCODER_API_KEY=${GEOCODER_API_KEY}
+    volumes:
+      - ./backend:/app
+      - ./geo_cache.json:/app/geo_cache.json
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: mapsnews-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    restart: unless-stopped
+
+volumes:
+  geo_cache:

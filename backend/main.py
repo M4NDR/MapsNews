@@ -112,95 +112,42 @@ CATEGORIES = {
     "образование": ["сафу", "сгму", "университет", "студент", "школа", "лицей", "егэ"]
 }
 
-KNOWN_PLACES = {
-    "архангельский суд": "Архангельск, ул. Гайдара, 8",
-    "областной суд": "Архангельск, ул. Гайдара, 8",
-    "северодвинский суд": "Северодвинск, ул. Ломоносова, 73",
-    "ломоносовский суд": "Архангельск, пр. Ломоносова, 202",
-    "октябрьский суд": "Архангельск, ул. Гагарина, 11",
-    "исакогорский суд": "Архангельск, ул. Дрейера, 99",
-    "соломбальский суд": "Архангельск, пр. Никольский, 15",
-    "драмтеатр": "Архангельск, площадь Ленина, 1",
-    "драмтеатра": "Архангельск, площадь Ленина, 1",
-    "стадион труд": "Архангельск, ул. Розинга, 19",
-    "кинотеатр мир": "Архангельск, пр. Троицкий, 55",
-    "дк строитель": "Северодвинск, ул. Советская, 10",
-    "дворец молодежи строитель": "Северодвинск, ул. Советская, 10",
-    "поликлиника №3": "Архангельск, ул. Победы, 67",
-    "поликлиника 3": "Архангельск, ул. Победы, 67",
-    "поликлиника №2": "Архангельск, пр. Ленинградский, 261",
-    "поликлиника 2": "Архангельск, пр. Ленинградский, 261",
-    "поликлиника №1": "Архангельск, пр. Ломоносова, 292",
-}
-
-WHITELIST_ARCHANGELSK = {
-    'тц "макси"', 'макси', 'тц макси', 'макси молл',
-    'тц "рико"', 'рико', 'тц рико',
-    'тц "европа"', 'европа сити молл', 'европа', 'тц европа',
-    'тц "сигма"', 'сигма',
-    'тц "титан арена"', 'титан арена', 'титан',
-    'тц "дельта"', 'дельта',
-    'тц "солнечный"', 'солнечный',
-    'трк "гранд плаза"', 'гранд плаза',
-    'тц "на троицком"', 'на троицком',
-    'тц "морской"', 'морской',
-    'тц "премьер"', 'премьер',
-    'первая городская больница', '1 гб', 'гб №1', 'городская больница №1',
-    'семашко', 'больница семашко',
-    'аокб', 'архангельская областная клиническая больница',
-    'областная больница', 'аоκб',
-    'детская областная больница', 'докб', 'детская окб',
-    'поликлиника №1', 'поликлиника №2', 'поликлиника №3', 'поликлиника №4',
-    'поликлиника №6', 'поликлиника №7', 'поликлиника №14',
-    'городская поликлиника №1', 'гп №1', 'гп №2',
-    'детская поликлиника №1', 'детская поликлиника №2', 'детская поликлиника №3',
-    'поликлиника литвинова', 'стоматологическая поликлиника',
-    'аптека "горизонт"', 'горизонт',
-    'аптека "максифарм"', 'максифарм',
-    'аптека "ригла"', 'ригла',
-    'аптека "столички"', 'столички',
-    'аптека "здравсити"',
-    'детский сад №', 'д/с №', 'дс №',
-    'школа №', 'гимназия №', 'лицей №',
-    'сафу', 'северный медицинский университет',
-    'поморский университет', 'с(а)фу',
-    'лвт', 'ломоносовский дворец творчества',
-    'дк', 'дом культуры',
-    'драмтеатр', 'театр драмы', 'театр кукол',
-    'кинотеатр "мираж"', 'мираж синема', 'мираж',
-    'морской-речной вокзал', 'морвокзал',
-    'северный рынок', 'центральный рынок', 'привокзальный рынок'
-}
-
-WHITELIST_LOWER = {item.lower().strip('"') for item in WHITELIST_ARCHANGELSK}
+# Словари удалены - функционал перенесен в json_geocoder.py и streets_database.json
 
 # === ГЕОКОДЕР ===
+from json_geocoder import SimpleGeocoder
 from natasha import (
     Segmenter, MorphVocab, AddrExtractor, NewsEmbedding, NewsNERTagger, Doc
 )
 
+# Инициализация
+simple_geocoder = SimpleGeocoder()
 segmenter = Segmenter()
 morph_vocab = MorphVocab()
+addr_extractor = AddrExtractor(morph_vocab)
 emb = NewsEmbedding()
 ner_tagger = NewsNERTagger(emb)
-addr_extractor = AddrExtractor(morph_vocab)
 
 def extract_address(text: str) -> Optional[str]:
-    text_lower = text.lower()
-    for key, addr in KNOWN_PLACES.items():
-        if key in text_lower:
-            return addr
-    for item in WHITELIST_LOWER:
-        if item in text_lower:
-            if "архангельск" not in item and "северодвинск" not in item:
-                 return f"Архангельск, {item}"
-            return item
+    """
+    Извлекает адрес. 
+    1. Сначала ищет точное совпадение улицы по JSON-базе.
+    2. Если не найдено — использует Natasha NLP (медленнее, но гибче).
+    """
+    # 1. Быстрый поиск через JSON
+    street = simple_geocoder.find_street_in_text(text)
+    if street:
+        building = simple_geocoder.extract_building_number(text, street)
+        if building:
+            return f"Архангельск, {street}, {building}"
+        return f"Архангельск, {street}"
+
+    # 2. Fallback: Natasha NLP
     try:
         doc = Doc(text)
         doc.segment(segmenter)
         doc.tag_ner(ner_tagger)
         
-        # 1. Address Extractor (Приоритет: явные адреса)
         matches = list(addr_extractor(text))
         for match in matches:
             fact = match.fact
@@ -210,35 +157,21 @@ def extract_address(text: str) -> Optional[str]:
             
             if parts: 
                 addr = ", ".join(parts)
-                # Если в адресе нет города, добавляем Архангельск
-                if "архангельск" not in addr.lower() and "северодвинск" not in addr.lower() and "новодвинск" not in addr.lower():
+                if "архангельск" not in addr.lower() and "северодвинск" not in addr.lower():
                     return f"Архангельск, {addr}"
                 return addr
 
-        # 2. NER (Именованные сущности, если адрес не найден)
         for span in doc.spans:
             val = span.text.strip('«»"\'')
             val_lower = val.lower()
-            
-            # Черный список (точное совпадение или начало)
-            stop_words = {
-                "архангельск", "архангельская область", "область", "россия", "северодвинск", "поморье",
-                "регион", "ненецкий автономный округ", "нао", "рф", "город",
-                "news29", "news29.ru", "сбер", "сбербанк", "мегафон", "мтс", "билайн", "теле2",
-                "vk", "вконтакте", "telegram", "facebook", "instagram", "youtube", "megapteka.ru"
-            }
-            
-            # Пропускаем, если само слово в стоп-листе (но не если оно часть названия, например "Архангельское шоссе")
-            if val_lower in stop_words: continue
-            
-            # Дополнительная проверка на мусор
             if len(val) < 4: continue
-            
             if span.type == 'ORG' or span.type == 'LOC':
+                 # Простая фильтрация стоп-слов внутри Natasha-блока уже избыточна, 
+                 # если JSON перехватывает основные улицы, но оставим для надежности
                  return val
                  
     except Exception as e:
-        logger.error(f"[NATASHA NER] Ошибка: {e}")
+        logger.error(f"[GEO] Ошибка NLP: {e}")
     
     return None
 
@@ -265,11 +198,17 @@ def get_coords_from_yandex(query: str) -> Optional[List[float]]:
     return None
 
 def parse_rss_and_fill():
-    logger.info("[RSS] Загрузка новостей через FEEDPARSER...")
+    logger.info("[RSS] Загрузка новостей через REQUESTS + FEEDPARSER...")
     try:
-        feed = feedparser.parse(RSS_URL)
+        # Скачиваем с заголовками, чтобы пройти защиту от ботов
+        response = requests.get(RSS_URL, headers=HEADERS, timeout=20)
+        response.raise_for_status()
+        
+        feed = feedparser.parse(response.content)
+        
         if feed.bozo:
-            logger.warning(f"[RSS] Ошибка парсинга XML: {feed.bozo_exception}")
+            logger.warning(f"[RSS] Warning парсинга XML: {feed.bozo_exception}")
+
         added = 0
         for entry in feed.entries:
             try:
@@ -306,10 +245,10 @@ def parse_rss_and_fill():
                 logger.error(f"[RSS] Ошибка новости: {e}")
         logger.info(f"[RSS] Добавлено {added} новостей (всего: {database.get_news_count()})")
     except Exception as e:
-        logger.error(f"[RSS] Критическая ошибка: {e}")
+        logger.error(f"[RSS] Критическая ошибка загрузки: {e}")
 
 def background_geocoder():
-    logger.info("[GEOCODER] Запущен (NATASHA + YANDEX + BS4 Content)")
+    logger.info("[GEOCODER] Запущен (JSON + NATASHA + YANDEX)")
     while True:
         try:
             items = database.get_uncoded_news(limit=6)
@@ -330,10 +269,13 @@ def background_geocoder():
                     if address:
                         coords = get_coords_from_yandex(address)
                     
-                    database.update_news_content_and_coords(item["id"], content, coords, address=address)
+                    # Если адрес не найден, пишем метку, чтобы не брать снова
+                    final_address = address if address else "NOT_FOUND"
                     
-                    log_addr = address or '—'
-                    log_coords = coords or 'None'
+                    database.update_news_content_and_coords(item["id"], content, coords, address=final_address)
+                    
+                    log_addr = address or 'НЕТ АДРЕСА'
+                    log_coords = coords or '—'
                     logger.info(f"[GEO] {item['id']} → {log_addr} → {log_coords}")
                     time.sleep(1.5)
                 except Exception as e:

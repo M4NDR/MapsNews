@@ -1,0 +1,99 @@
+/* src/styles/HomePage.css */
+.home-page {
+  width: calc(100% - 40px);
+  /* Match header width exactly */
+  max-width: none;
+  /* Remove restriction to align with header */
+  margin: 0 auto;
+  padding: 0 0 40px 0;
+}
+
+/* Шапка на всю ширину */
+.header {
+  width: calc(100% - 40px);
+  /* Отступы по бокам */
+  margin: 20px auto 40px;
+  /* Отступ сверху и центрирование */
+  padding: 80px 40px 40px;
+  /* Background */
+  background-image: linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url(../assets/Arkh.jpg);
+  background-size: cover;
+  background-position: center;
+  transition: background-image 0.5s ease-in-out;
+
+  color: white;
+  border-radius: 40px;
+  /* Мягкие углы */
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  /* Тень для объема */
+  overflow: hidden;
+  /* Параллакс эффект */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+  /* Высота героя */
+  position: relative;
+}
+
+body[data-theme='light'] .header {
+  background-image: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(../assets/Arkh2.jpg);
+  /* Светлее оверлей для светлой темы */
+}
+
+.header h1 {
+  font-size: 6rem;
+  /* Крупнее */
+  /* Красивый градиент "Northern Lights" */
+  background: linear-gradient(to right, #a1c4fd 0%, #c2e9fb 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  /* Fallback */
+  margin-bottom: 40px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-shadow: none;
+  filter: drop-shadow(0 0 20px rgba(161, 196, 253, 0.3));
+  /* Свечение */
+  font-family: 'Inter', sans-serif;
+  /* Если подключен, иначе fallback */
+}
+
+.header-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: 100%;
+  max-width: none;
+  /* На всю ширину */
+  margin: 0;
+  padding: 24px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  border-top: none;
+  border-bottom: none;
+  background: rgba(255, 255, 255, 0.03);
+  /* Еще прозрачнее */
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-radius: 40px;
+  /* Сильнее скругление */
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* Адаптив */
+@media (min-width: 768px) {
+  .header-controls {
+    flex-direction: row;
+    justify-content: space-between;
+    /* Распределяем элементы */
+    padding: 20px 40px;
+    /* Убрали сброс border-radius, теперь всегда скругленные */
+  }
+}

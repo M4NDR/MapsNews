@@ -1,0 +1,337 @@
+/* src/styles/DetailPage.css */
+@import './_variables.css';
+
+/* === ЛЭЯУТ === */
+.detail-layout {
+  display: grid;
+  /* Начальное состояние: Карта закрыта (0px), Контент (1fr), Сайдбар (300px) */
+  grid-template-columns: 0px 1fr 300px;
+  min-height: 100vh;
+  background: var(--bg);
+  /* Анимация колонок для плавного открытия */
+  transition: grid-template-columns 1s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+}
+
+.detail-layout.map-open {
+  /* Открытая карта: Карта (40vw), Контент (1fr), Сайдбар (300px) */
+  grid-template-columns: 40vw 1fr 300px;
+}
+
+/* === КАРТА === */
+.map-container {
+  position: relative;
+  height: 100vh;
+  overflow: hidden;
+  background: transparent;
+  display: block;
+  /* Всегда в DOM для анимации */
+  padding: 0;
+  /* Padding анимируем или убираем в закрытом состоянии */
+  box-sizing: border-box;
+  z-index: 1;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.5s ease 0s, visibility 0s linear 0.5s, padding 0s linear 0.5s;
+}
+
+.detail-layout.map-open .map-container {
+  opacity: 1;
+  visibility: visible;
+  padding: 20px;
+  transition: opacity 0.5s ease 0.2s, visibility 0s linear 0s, padding 0s linear 0s;
+}
+
+/* === КОНТЕЙНЕР НОВОСТИ === */
+.news-container {
+  height: 100vh;
+  overflow-y: auto;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  /* Разделитель с сайдбаром */
+  /* Скрываем скроллбар */
+  scrollbar-width: none;
+  /* Firefox */
+  -ms-overflow-style: none;
+  /* IE/Edge */
+}
+
+.news-container::-webkit-scrollbar {
+  display: none;
+  /* Chrome/Safari */
+}
+
+/* === САЙДБАР === */
+.sidebar-container {
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  position: relative;
+  z-index: 2;
+  /* Поверх карты при анимации если что */
+}
+
+/* Media query для скрытия сайдбара на маленьких экранах */
+@media (max-width: 1024px) {
+  .detail-layout {
+    grid-template-columns: 0px 1fr 0px;
+  }
+
+  .detail-layout.map-open {
+    grid-template-columns: 40vw 1fr 0px;
+  }
+
+  .sidebar-container {
+    display: none;
+  }
+}
+
+/* === НАВИГАЦИЯ === */
+.nav-buttons {
+  position: sticky;
+  top: 0;
+  left: 0;
+  width: 100%;
+  padding: 20px 30px;
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  z-index: 100;
+  display: flex;
+  gap: 12px;
+  border-bottom: 1px solid var(--border);
+  align-items: center;
+  /* Выравнивание по вертикали */
+}
+
+[data-theme='dark'] .nav-buttons {
+  background: rgba(17, 24, 39, 0.9);
+}
+
+.nav-btn {
+  padding: 10px 20px;
+  border-radius: 50px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow: var(--shadow-sm);
+}
+
+.nav-btn:hover {
+  background: var(--bg);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--text-secondary);
+}
+
+.nav-btn.active {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+
+.nav-site-logo {
+  margin-left: auto;
+  /* Прижимаем вправо */
+  font-size: 1.5rem;
+  font-weight: 800;
+  text-decoration: none;
+  /* Градиентный текст как на главной */
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: #3b82f6;
+  /* Fallback */
+  transition: opacity 0.2s;
+}
+
+.nav-site-logo:hover {
+  opacity: 0.8;
+}
+
+/* === ОБЕРТКА КОНТЕНТА === */
+.detail-wrapper {
+  max-width: 800px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 40px 30px 80px;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* === БЛОК 1: ЗАГОЛОВОК (HEADER BODY) === */
+.news-header-block {
+  background: var(--bg-card);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+  border: 1px solid var(--border);
+}
+
+.header-content {
+  padding: 40px;
+}
+
+.news-meta-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+
+.news-category-tag {
+  background: var(--primary);
+  color: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.news-title-main {
+  font-size: 2.5rem;
+  line-height: 1.2;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  letter-spacing: -0.02em;
+}
+
+.news-source {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+/* Hero Image / Pattern */
+.news-hero-image {
+  width: 100%;
+  height: 400px;
+  background-size: cover;
+  background-position: center;
+}
+
+.news-hero-pattern {
+  width: 100%;
+  height: 200px;
+  background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+  opacity: 0.1;
+  position: relative;
+}
+
+.news-hero-pattern::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: radial-gradient(var(--text-secondary) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: 0.2;
+}
+
+/* === БЛОК 2: ТЕКСТ (CONTENT BODY) === */
+.news-content-block {
+  background: var(--bg-card);
+  border-radius: 24px;
+  padding: 50px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+}
+
+.detail-content {
+  font-family: 'Georgia', serif;
+  /* Для чтения лучше serif */
+  font-size: 1.25rem;
+  line-height: 1.8;
+  color: var(--text-primary);
+}
+
+.detail-content p {
+  margin-bottom: 1.5em;
+  text-indent: 1.5em;
+  text-align: justify;
+}
+
+.detail-content img {
+  max-width: 100%;
+  border-radius: 12px;
+  margin: 20px 0;
+}
+
+.map-warning {
+  margin-top: 30px;
+  padding: 16px;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  color: #c2410c;
+  border-radius: 12px;
+  font-size: 0.95rem;
+}
+
+[data-theme='dark'] .map-warning {
+  background: #431407;
+  border-color: #7c2d12;
+  color: #fdba74;
+}
+
+/* === МОБИЛЬНЫЕ === */
+@media (max-width: 768px) {
+  .detail-layout.map-open {
+    grid-template-columns: 1fr;
+  }
+
+  .map-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 100;
+    display: none;
+    /* Скрываем по умолчанию, показываем классом */
+  }
+
+  .detail-layout.map-open .map-container {
+    display: block;
+  }
+
+  .nav-buttons {
+    padding: 15px 20px;
+  }
+
+  .detail-wrapper {
+    padding: 20px;
+  }
+
+  .news-title-main {
+    font-size: 1.8rem;
+  }
+
+  .header-content,
+  .news-content-block {
+    padding: 24px;
+  }
+
+  .news-hero-image {
+    height: 250px;
+  }
+}

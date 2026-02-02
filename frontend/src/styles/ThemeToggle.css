@@ -1,0 +1,18 @@
+/* src/styles/ThemeToggle.css */
+@import './_variables.css';
+
+.theme-toggle {
+  background: var(--primary);
+  color: white;
+  border: none;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: var(--transition);
+}
+
+.theme-toggle:hover {
+  background: var(--primary-light);
+}

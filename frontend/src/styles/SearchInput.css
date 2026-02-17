@@ -10,7 +10,8 @@
   font-size: 1rem;
   background: #e5e7eb;
   /* Darker gray */
-  color: var(--text-primary);
+  color: #1f2937;
+  /* Dark text for readability */
   outline: none;
   transition: var(--transition);
 }

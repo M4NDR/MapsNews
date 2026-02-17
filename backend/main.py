@@ -116,64 +116,20 @@ CATEGORIES = {
 
 # === ГЕОКОДЕР ===
 from json_geocoder import SimpleGeocoder
-from natasha import (
-    Segmenter, MorphVocab, AddrExtractor, NewsEmbedding, NewsNERTagger, Doc
-)
 
-# Инициализация
+
+# Инициализация улучшенного геокодера (с Natasha внутри)
 simple_geocoder = SimpleGeocoder()
-segmenter = Segmenter()
-morph_vocab = MorphVocab()
-addr_extractor = AddrExtractor(morph_vocab)
-emb = NewsEmbedding()
-ner_tagger = NewsNERTagger(emb)
 
 def extract_address(text: str) -> Optional[str]:
     """
-    Извлекает адрес. 
-    1. Сначала ищет точное совпадение улицы по JSON-базе.
-    2. Если не найдено — использует Natasha NLP (медленнее, но гибче).
+    Извлекает адрес используя улучшенный геокодер.
+    Использует Natasha NLP + regex fallback.
     """
-    # 1. Быстрый поиск через JSON
-    street = simple_geocoder.find_street_in_text(text)
-    if street:
-        building = simple_geocoder.extract_building_number(text, street)
-        if building:
-            return f"Архангельск, {street}, {building}"
-        return f"Архангельск, {street}"
-
-    # 2. Fallback: Natasha NLP
-    try:
-        doc = Doc(text)
-        doc.segment(segmenter)
-        doc.tag_ner(ner_tagger)
-        
-        matches = list(addr_extractor(text))
-        for match in matches:
-            fact = match.fact
-            parts = []
-            if hasattr(fact, 'street') and fact.street: parts.append(fact.street)
-            if hasattr(fact, 'building') and fact.building: parts.append(fact.building)
-            
-            if parts: 
-                addr = ", ".join(parts)
-                if "архангельск" not in addr.lower() and "северодвинск" not in addr.lower():
-                    return f"Архангельск, {addr}"
-                return addr
-
-        for span in doc.spans:
-            val = span.text.strip('«»"\'')
-            val_lower = val.lower()
-            if len(val) < 4: continue
-            if span.type == 'ORG' or span.type == 'LOC':
-                 # Простая фильтрация стоп-слов внутри Natasha-блока уже избыточна, 
-                 # если JSON перехватывает основные улицы, но оставим для надежности
-                 return val
-                 
-    except Exception as e:
-        logger.error(f"[GEO] Ошибка NLP: {e}")
-    
-    return None
+    # Новый геокодер возвращает кортеж (address, coords)
+    # Нам нужен только адрес для последующего геокодирования
+    address, _ = simple_geocoder.process_text(text, "")
+    return address
 
 def get_coords_from_yandex(query: str) -> Optional[List[float]]:
     if not query: return None

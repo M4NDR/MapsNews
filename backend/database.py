@@ -17,7 +17,6 @@ def init_db():
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS news (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            old_id INTEGER,
             url TEXT UNIQUE NOT NULL,
             title TEXT NOT NULL,
             preview TEXT,
@@ -27,20 +26,17 @@ def init_db():
             category TEXT DEFAULT 'другое',
             content TEXT,
             coords TEXT,
-            address TEXT
+            address TEXT,
+            parsed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            geocoded_at DATETIME
         )
     """)
     cursor.execute('CREATE INDEX IF NOT EXISTS idx_date ON news (date DESC)')
     
-    # Миграция
-    try:
-        cursor.execute("ALTER TABLE news ADD COLUMN old_id INTEGER")
-    except:
-        pass
-    try:
-        cursor.execute("ALTER TABLE news ADD COLUMN address TEXT")
-    except:
-        pass
+    try: cursor.execute("ALTER TABLE news ADD COLUMN parsed_at DATETIME")
+    except Exception: pass
+    try: cursor.execute("ALTER TABLE news ADD COLUMN geocoded_at DATETIME")
+    except Exception: pass
 
     conn.commit()
     conn.close()
@@ -55,8 +51,8 @@ def save_news(data: Dict, content: str = None, coords: list = None, address: str
         # и не менять их ID (что сбрасывало бы результаты геокодера)
         cursor.execute("""
             INSERT OR IGNORE INTO news 
-            (url, title, preview, date, source, image, category, content, coords, old_id, address)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (url, title, preview, date, source, image, category, content, coords, address, parsed_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
         """, (
             data["url"], 
             data["title"], 
@@ -67,7 +63,6 @@ def save_news(data: Dict, content: str = None, coords: list = None, address: str
             data.get("category", "другое"),
             content, 
             json.dumps(coords) if coords else None,
-            data.get("old_id"),
             address
         ))
         
@@ -122,7 +117,10 @@ def get_news_count() -> int:
 def get_news_by_id(news_id: int) -> Optional[Dict]:
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM news WHERE id = ?", (news_id,))
+    cursor.execute("""
+        SELECT id, url, title, date, source, image, category, content, coords, address 
+        FROM news WHERE id = ?
+    """, (news_id,))
     row = cursor.fetchone()
     conn.close()
     
@@ -131,15 +129,15 @@ def get_news_by_id(news_id: int) -> Optional[Dict]:
         
     return {
         "id": row[0],
-        "url": row[2],
-        "title": row[3],
-        "date": row[5],
-        "source": row[6],
-        "image": row[7],
-        "category": row[8],
-        "content": row[9],
-        "coords": json.loads(row[10]) if row[10] else None,
-        "address": row[11] if len(row) > 11 else None
+        "url": row[1],
+        "title": row[2],
+        "date": row[3],
+        "source": row[4],
+        "image": row[5],
+        "category": row[6],
+        "content": row[7],
+        "coords": json.loads(row[8]) if row[8] else None,
+        "address": row[9] if len(row) > 9 else None
     }
 
 def get_uncoded_news(limit=10):
@@ -159,11 +157,11 @@ def update_news_content_and_coords(news_id, content, coords, address=None):
     c = conn.cursor()
     coords_json = json.dumps(coords) if coords else None
     
-    # Если передан адрес, обновляем и его. Если нет — не трогаем.
+    # Если передан адрес, обновляем и его. И ставим время геокодирования
     if address:
         c.execute("""
             UPDATE news 
-            SET content = ?, coords = ?, address = ?
+            SET content = ?, coords = ?, address = ?, geocoded_at = CURRENT_TIMESTAMP
             WHERE id = ?
         """, (content, coords_json, address, news_id))
     else:
@@ -174,3 +172,12 @@ def update_news_content_and_coords(news_id, content, coords, address=None):
         """, (content, coords_json, news_id))
     conn.commit()
     conn.close()
+
+def get_admin_logs(limit=200):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT id, title, address, parsed_at, geocoded_at FROM news ORDER BY id DESC LIMIT ?", (limit,))
+    rows = c.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]

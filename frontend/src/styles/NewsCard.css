@@ -1,4 +1,9 @@
-/* src/styles/NewsCard.css */
+.news-card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block; /* Важно, чтобы ссылка заполняла все доступное пространство и не ломалась структура */
+}
+
 .news-card {
   background: var(--bg-card);
   border-radius: var(--radius);
@@ -10,8 +15,13 @@
   flex-direction: column;
   height: 100%;
   cursor: pointer;
-  text-decoration: none;
-  color: inherit;
+}
+
+@media (max-width: 768px) {
+  .news-card {
+    border-radius: 16px;
+    /* Более мягкие углы на мобильных */
+  }
 }
 
 .news-card:hover {
@@ -22,17 +32,28 @@
 .news-image {
   width: 100%;
   height: 160px;
-  /* Reduced from 200px */
   object-fit: cover;
   background: var(--bg);
 }
 
+@media (max-width: 480px) {
+  .news-image {
+    height: 140px;
+    /* Еще компактнее на маленьких телефонах */
+  }
+}
+
 .news-content {
   padding: 16px;
-  /* Reduced from 20px */
   display: flex;
   flex-direction: column;
   flex-grow: 1;
+}
+
+@media (max-width: 768px) {
+  .news-content {
+    padding: 12px;
+  }
 }
 
 .news-meta {
@@ -56,11 +77,17 @@
 
 .news-title {
   font-size: 1.15rem;
-  /* Reduced from 1.25rem */
   font-weight: 700;
   margin-bottom: 12px;
   line-height: 1.4;
   color: var(--text-primary);
+}
+
+@media (max-width: 768px) {
+  .news-title {
+    font-size: 1.05rem;
+    margin-bottom: 8px;
+  }
 }
 
 .news-preview {
@@ -74,6 +101,14 @@
   overflow: hidden;
 }
 
+@media (max-width: 768px) {
+  .news-preview {
+    font-size: 0.85rem;
+    line-height: 1.5;
+    margin-bottom: 15px;
+  }
+}
+
 .news-footer {
   margin-top: auto;
   display: flex;
@@ -83,6 +118,13 @@
   color: var(--text-secondary);
   border-top: 1px solid var(--border);
   padding-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .news-footer {
+    padding-top: 10px;
+    font-size: 0.75rem;
+  }
 }
 
 .read-more {

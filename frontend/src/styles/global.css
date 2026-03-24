@@ -31,6 +31,16 @@
   box-sizing: border-box;
 }
 
+html {
+  font-size: 16px;
+}
+
+@media (max-width: 768px) {
+  html {
+    font-size: 14px;
+  }
+}
+
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   background: var(--bg);
@@ -38,7 +48,11 @@ body {
   transition: background 0.3s ease, color 0.3s ease;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  margin: 0 !important;
+  padding: 0 !important;
 }
+
 
 .loading {
   text-align: center;
@@ -46,4 +60,11 @@ body {
   font-size: 1.2rem;
   color: var(--text-secondary);
   font-weight: 500;
+}
+
+@media (max-width: 768px) {
+  .loading {
+    padding: 30px;
+    font-size: 1rem;
+  }
 }

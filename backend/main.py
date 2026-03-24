@@ -2,10 +2,11 @@ import feedparser
 from bs4 import BeautifulSoup
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 import requests
 from datetime import datetime
 import re
-from typing import Optional, List
+from typing import Optional, List, Tuple
 import threading
 import time
 import os
@@ -25,6 +26,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Монтируем папку static для раздачи графики (в т.ч. скачанных картинок)
+os.makedirs("static/images", exist_ok=True)
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # === КОНФИГУРАЦИЯ ===
 RSS_URL = "https://www.news29.ru/rss"
@@ -68,28 +73,85 @@ def extract_content_with_bs4(url: str) -> str:
         final_html = ""
         
         if content_div:
-            # Если нашли контейнер, пробуем извлечь текст с учетом <br>
-            # Заменяем двойные <br> на параграфы
+            # Превращаем <br> в двойной перенос для надежного отделения абзацев
             for br in content_div.find_all("br"):
-                br.replace_with("\n")
+                br.replace_with("\n\n")
             
-            text_content = content_div.get_text(separator="\n", strip=True)
-            paragraphs = [p.strip() for p in text_content.split("\n") if len(p.strip()) > 20]
+            # В конец каждого параграфа или блока тоже ставим двойной перенос
+            for block in content_div.find_all(["p", "div", "h1", "h2", "h3", "li"]):
+                block.append("\n\n")
+                
+            # Извлекаем текст, соединяя инлайн-теги (например <a>, <b>) просто пробелом
+            text_content = content_div.get_text(separator=" ")
             
+            # Бьём по реальным переносам
+            raw_lines = text_content.split("\n")
+            
+            paragraphs = []
+            skip_mode = False
+            for line in raw_lines:
+                # Очищаем от лишних (двойных, тройных) пробелов внутри и по краям
+                clean_line = " ".join(line.split())
+                
+                # Защита от мусора
+                lower_line = clean_line.lower()
+                if lower_line.startswith("новости по теме") or lower_line.startswith("читайте также"):
+                    skip_mode = True
+                    continue
+                
+                if skip_mode:
+                    # Если встречаем длинный полноценный абзац — это снова основная статья, выключаем пропуск
+                    if len(clean_line) > 90:
+                        skip_mode = False
+                    else:
+                        continue # Пропускаем мелкие "чужие" заголовки
+                    
+                if len(clean_line) > 5: # Игнорируем совсем короткий мусор
+                    paragraphs.append(clean_line)
+                    
             final_html = "".join([f"<p>{p}</p>\n" for p in paragraphs])
         
         else:
-            # Fallback: ищем все P
+            # Fallback: просто ищем все <p>
             tags = soup.find_all('p')
+            skip_mode = False
             for tag in tags:
-                text = tag.get_text(strip=True)
-                if len(text) > 20: 
+                text = " ".join(tag.get_text(separator=" ").split())
+                lower_text = text.lower()
+                if lower_text.startswith("новости по теме") or lower_text.startswith("читайте также"):
+                    skip_mode = True
+                    continue
+                
+                if skip_mode:
+                    if len(text) > 90:
+                        skip_mode = False
+                    else:
+                        continue
+                        
+                if len(text) > 5: 
                     final_html += f"<p>{text}</p>\n"
             
             if not final_html:
                  # Super fallback
-                text = soup.get_text(separator='\n', strip=True)
-                lines = [line for line in text.split('\n') if len(line) > 50]
+                text = soup.get_text(separator='\n')
+                lines = []
+                skip_mode = False
+                for line in text.split('\n'):
+                    clean_line = " ".join(line.split())
+                    lower_line = clean_line.lower()
+                    if lower_line.startswith("новости по теме") or lower_line.startswith("читайте также"):
+                        skip_mode = True
+                        continue
+                        
+                    if skip_mode:
+                        if len(clean_line) > 100:
+                            skip_mode = False
+                        else:
+                            continue
+                            
+                    if len(clean_line) > 40:
+                        lines.append(clean_line)
+                
                 final_html = "".join([f"<p>{line}</p>\n" for line in lines])
 
         return final_html or "Текст не найден"
@@ -97,6 +159,33 @@ def extract_content_with_bs4(url: str) -> str:
     except Exception as e:
         logger.error(f"[BS4] Ошибка загрузки контента: {e}")
         return ""
+
+def download_image(url: str) -> Optional[str]:
+    """ Скачивает картинку на диск и возвращает локальный URL (относительный) """
+    if not url: return None
+    if url.startswith("/static/"): 
+        return url
+        
+    try:
+        filename = url.split("/")[-1]
+        if not filename or "?" in filename:
+            import hashlib
+            filename = hashlib.md5(url.encode()).hexdigest() + ".jpg"
+            
+        filepath = f"static/images/{filename}"
+        
+        # Скачиваем только если файла нет
+        if not os.path.exists(filepath):
+            r = requests.get(url, stream=True, timeout=10)
+            if r.status_code == 200:
+                with open(filepath, 'wb') as f:
+                    for chunk in r.iter_content(8192):
+                        f.write(chunk)
+                        
+        return f"/static/images/{filename}"
+    except Exception as e:
+        logger.error(f"[IMAGE] Ошибка скачивания {url}: {e}")
+        return url
 
 # === СЛОВАРИ И ДАННЫЕ ===
 CATEGORIES = {
@@ -112,46 +201,13 @@ CATEGORIES = {
     "образование": ["сафу", "сгму", "университет", "студент", "школа", "лицей", "егэ"]
 }
 
-# Словари удалены - функционал перенесен в json_geocoder.py и streets_database.json
-
-# === ГЕОКОДЕР ===
 from json_geocoder import SimpleGeocoder
 
-
-# Инициализация улучшенного геокодера (с Natasha внутри)
+# Инициализация геокодера
 simple_geocoder = SimpleGeocoder()
 
-def extract_address(text: str) -> Optional[str]:
-    """
-    Извлекает адрес используя улучшенный геокодер.
-    Использует Natasha NLP + regex fallback.
-    """
-    # Новый геокодер возвращает кортеж (address, coords)
-    # Нам нужен только адрес для последующего геокодирования
-    address, _ = simple_geocoder.process_text(text, "")
-    return address
-
-def get_coords_from_yandex(query: str) -> Optional[List[float]]:
-    if not query: return None
-    try:
-        url = (
-            f"https://geocode-maps.yandex.ru/1.x/?apikey={GEOCODER_API_KEY}"
-            f"&geocode={requests.utils.quote(query)}&format=json&results=1"
-            f"&bbox={ARKH_OBLAST_BBOX}&rspn=1"
-        )
-        logger.info(f"[GEOCODER] → {query}")
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            data = r.json()
-            members = data["response"]["GeoObjectCollection"]["featureMember"]
-            if members:
-                lon, lat = map(float, members[0]["GeoObject"]["Point"]["pos"].split())
-                logger.info(f"[GEOCODER] УСПЕХ → [{lat:.6f}, {lon:.6f}]")
-                return [lat, lon]
-        logger.info(f"[GEOCODER] Не найдено")
-    except Exception as e:
-        logger.error(f"[GEOCODER] Ошибка: {e}")
-    return None
+def extract_address_and_coords(text: str) -> Tuple[Optional[str], Optional[List[float]]]:
+    return simple_geocoder.process_text(text, "")
 
 def parse_rss_and_fill():
     logger.info("[RSS] Загрузка новостей через REQUESTS + FEEDPARSER...")
@@ -188,6 +244,8 @@ def parse_rss_and_fill():
                 if not image and "media_content" in entry:
                     image = entry.media_content[0].get("url")
 
+                local_image = download_image(image)
+
                 text_for_cat = (title + " " + preview).lower()
                 category = "другое"
                 for cat, words in CATEGORIES.items():
@@ -195,7 +253,7 @@ def parse_rss_and_fill():
                         category = cat
                         break
 
-                if database.save_news({"url": url, "title": title, "preview": preview, "date": date, "image": image, "category": category}):
+                if database.save_news({"url": url, "title": title, "preview": preview, "date": date, "image": local_image, "category": category}):
                     added += 1
             except Exception as e:
                 logger.error(f"[RSS] Ошибка новости: {e}")
@@ -204,7 +262,7 @@ def parse_rss_and_fill():
         logger.error(f"[RSS] Критическая ошибка загрузки: {e}")
 
 def background_geocoder():
-    logger.info("[GEOCODER] Запущен (JSON + NATASHA + YANDEX)")
+    logger.info("[GEOCODER] Запущен (REGEX + YANDEX)")
     while True:
         try:
             items = database.get_uncoded_news(limit=6)
@@ -219,11 +277,7 @@ def background_geocoder():
                     
                     clean_content_for_geo = BeautifulSoup(content, "html.parser").get_text(separator=" ", strip=True)
                     full_text = f"{item['title']} {clean_content_for_geo}"
-                    address = extract_address(full_text)
-                    
-                    coords = None
-                    if address:
-                        coords = get_coords_from_yandex(address)
+                    address, coords = extract_address_and_coords(full_text)
                     
                     # Если адрес не найден, пишем метку, чтобы не брать снова
                     final_address = address if address else "NOT_FOUND"
@@ -243,7 +297,7 @@ def background_geocoder():
 
 def auto_parser():
     database.init_db()
-    # Первая загрузка через 2 секунды после старта, чтобы не блочить
+   
     time.sleep(2)
     parse_rss_and_fill()
     while True:
@@ -278,3 +332,10 @@ def full(news_id: int):
         database.update_news_content_and_coords(item["id"], content, item["coords"])
         item["content"] = content
     return item
+
+@app.get("/admin/logs")
+def admin_logs(password: str = Query(...)):
+    """Выводит логи парсинга новостей и геокодера"""
+    if password != "123321":
+        raise HTTPException(status_code=403, detail="Неверный пароль")
+    return database.get_admin_logs(limit=200)

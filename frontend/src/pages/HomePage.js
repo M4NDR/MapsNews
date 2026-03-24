@@ -1,4 +1,3 @@
-// src/pages/HomePage.jsx
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import NewsList from '../components/NewsList';
@@ -7,12 +6,13 @@ import SearchInput from '../components/SearchInput';
 import ThemeToggle from '../components/ThemeToggle';
 import WeatherWidget from '../components/WeatherWidget';
 import FullMap from '../components/FullMap';
+import MobileHomePage from './MobileHomePage'; // Импорт новой версии
 import { fetchNews } from '../api';
 import '../styles/HomePage.css';
 
 export default function HomePage() {
-  const [allNews, setAllNews] = useState([]); // Все загруженные новости
-  const [displayedNews, setDisplayedNews] = useState([]); // Отображаемые новости
+  const [allNews, setAllNews] = useState([]);
+  const [displayedNews, setDisplayedNews] = useState([]);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(1);
@@ -20,9 +20,18 @@ export default function HomePage() {
   const category = searchParams.get("category") || "все";
   const [search, setSearch] = useState("");
 
+  // Определение мобильного экрана
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const ITEMS_PER_PAGE = 20;
 
-  // Загрузка всех новостей один раз при старте (Preload + Cache)
+  // Загрузка всех новостей один раз при старте
   useEffect(() => {
     const fetchFreshNews = async () => {
       try {
@@ -40,7 +49,6 @@ export default function HomePage() {
         try {
           const parsed = JSON.parse(cachedNews);
           setAllNews(parsed);
-          // Обновляем в фоне через 2 секунды, чтобы не забивать поток при старте
           setTimeout(fetchFreshNews, 2000);
           return;
         } catch (e) {
@@ -56,18 +64,18 @@ export default function HomePage() {
     initData();
   }, []);
 
-  // Фильтрация и пагинация (Локально)
+  // Фильтрация и пагинация
   useEffect(() => {
     let filtered = [...allNews];
 
-    // 1. Фильтр по категории
     if (category === "на карте") {
-      filtered = filtered.filter(item => item.coords);
+      filtered = filtered.filter(item => item && item.coords);
     } else if (category && category !== "все") {
-      filtered = filtered.filter(item => item.category === category.toLowerCase());
+      filtered = filtered.filter(item =>
+        item && item.category && item.category.toLowerCase() === category.toLowerCase()
+      );
     }
 
-    // 2. Поиск
     if (search) {
       const lowerSearch = search.toLowerCase();
       filtered = filtered.filter(item =>
@@ -76,7 +84,6 @@ export default function HomePage() {
       );
     }
 
-    // 3. Пагинация
     const endIndex = page * ITEMS_PER_PAGE;
     setDisplayedNews(filtered.slice(0, endIndex));
     setHasMore(endIndex < filtered.length);
@@ -86,11 +93,26 @@ export default function HomePage() {
     setPage(prev => prev + 1);
   };
 
+  // ЕСЛИ МОБИЛЬНЫЙ — ПОКАЗЫВАЕМ ОТДЕЛЬНУЮ СТРАНИЦУ
+  if (isMobile) {
+    return (
+      <MobileHomePage
+        allNews={allNews}
+        displayedNews={displayedNews}
+        loading={loading}
+        hasMore={hasMore}
+        loadMore={loadMore}
+        category={category}
+        search={search}
+        setSearch={setSearch}
+      />
+    );
+  }
+
+  // ДЕКСТОПНАЯ ВЕРСИЯ (без изменений)
   return (
     <>
-      <header
-        className="header"
-      >
+      <header className="header">
         <h1>Новостные Карты</h1>
         <div className="header-controls">
           <SearchInput value={search} onChange={setSearch} />

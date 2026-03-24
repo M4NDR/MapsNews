@@ -8,12 +8,26 @@
   justify-content: center;
 }
 
+@media (max-width: 768px) {
+  .category-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    justify-content: flex-start;
+    padding: 0 16px 12px 16px;
+    margin: 0;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none; /* Firefox */
+  }
+  .category-tabs::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+}
+
+
 .tab-btn {
-  background: rgba(255, 255, 255, 0.5);
-  /* Полупрозрачный фон чтобы читалось */
-  border: none;
-  color: #000000;
-  /* Явный черный цвет по запросу */
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
   padding: 10px 20px;
   border-radius: 20px;
   font-size: 0.95rem;
@@ -22,6 +36,13 @@
   transition: all 0.2s ease;
   text-transform: capitalize;
   white-space: nowrap;
+}
+
+@media (max-width: 768px) {
+  .tab-btn {
+    padding: 8px 16px;
+    font-size: 0.85rem;
+  }
 }
 
 .tab-btn:hover {

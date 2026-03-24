@@ -5,13 +5,17 @@ import '../styles/CategoryTabs.css';
 
 const CATEGORIES = ["все", "на карте", "дтп", "политика", "общество", "экономика", "спорт", "культура", "происшествия", "другое"];
 
-export default function CategoryTabs() {
+export default function CategoryTabs({ hideMap = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const category = searchParams.get("category") || "все";
 
+  const displayCategories = hideMap
+    ? CATEGORIES.filter(cat => cat !== "на карте")
+    : CATEGORIES;
+
   return (
     <div className="category-tabs">
-      {CATEGORIES.map(cat => (
+      {displayCategories.map(cat => (
         <button
           key={cat}
           className={`tab-btn ${category === cat ? 'active' : ''}`}

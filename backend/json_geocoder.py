@@ -1,12 +1,3 @@
-"""
-Простой геокодер на основе JSON-справочника улиц.
-Алгоритм:
-1. Ищет улицу из JSON в тексте новости
-2. Извлекает номер дома (если есть)
-3. Формирует адрес "Архангельск, улица, номер"
-4. Отправляет в Yandex API для получения координат
-"""
-
 import os
 import json
 import requests
@@ -19,18 +10,15 @@ logger = logging.getLogger(__name__)
 
 GEOCODER_API_KEY = os.getenv("GEOCODER_API_KEY", "686e5b6d-df4e-49de-a918-317aa589c34c")
 ARKH_OBLAST_BBOX = "35.5,62.8~49.0,67.5"
-STREETS_DB_PATH = "streets_database.json"
 
 
 class SimpleGeocoder:
-    def __init__(self, db_path: str = STREETS_DB_PATH, cache_path: str = "geo_cache.json"):
-        self.streets = self._load_streets(db_path)
-        self.streets.sort(key=len, reverse=True)
+    def __init__(self, cache_path: str = "geo_cache.json"):
         self.cache_path = cache_path
         self.cache = self._load_cache()
+        logger.info("[REGEX GEOCODER] Инициализирован!")
 
     def _load_cache(self) -> dict:
-        """Загружает кэш координат из файла"""
         if os.path.exists(self.cache_path):
             try:
                 with open(self.cache_path, 'r', encoding='utf-8') as f:
@@ -40,103 +28,91 @@ class SimpleGeocoder:
         return {}
 
     def _save_cache(self):
-        """Сохраняет кэш в файл"""
         try:
             with open(self.cache_path, 'w', encoding='utf-8') as f:
                 json.dump(self.cache, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.error(f"[CACHE] Ошибка сохранения: {e}")
 
-    def _load_streets(self, db_path: str) -> List[str]:
-        """Загружает список улиц из JSON"""
-        try:
-            with open(db_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                return data.get("streets", [])
-        except Exception as e:
-            logger.error(f"[JSON] Ошибка загрузки: {e}")
-            return []
-    
-    def find_street_in_text(self, text: str) -> Optional[str]:
+    def extract_address_from_text(self, text: str) -> Optional[str]:
         """
-        Ищет первую найденную улицу из справочника в тексте.
-        Возвращает название улицы или None.
+        Ищет адрес в тексте. Собирает все упоминания улиц и возвращает приоритетно тот адрес, 
+        в котором указан номер дома. Если с номером дома нет, берет первый найденный.
         """
-        text_lower = text.lower()
+        # Маркеры оборачиваем в (?i: ...), чтобы только они игнорировали регистр, 
+        # а названия улиц (с большой буквы) оставались строго чувствительны к регистру.
+        markers = r"(?i:улиц[а-я]{1,3}|ул\.?|проспект[а-я]{0,2}|пр-?т?\.?|набережн[а-я]{2,3}|наб\.?|переул[а-я]{2}|пер\.?|площад[а-я]{1,2}|пл\.?|шоссе|ш\.?|алле[яие]|проезд[а-я]{0,2})"
+        name = r"((?:[А-ЯЁ][а-яё]+|[0-9]{1,3}-?[а-яё]{0,2})(?:\s+[А-ЯЁ][а-яё]+){0,2})"
         
-        for street in self.streets:
-            # Используем поиск с границами слов, чтобы избежать частичных совпадений
-            # Например, чтобы "ул. Садовая" не нашлась внутри "ул. Садовая-Кудринская" (если такой нет в базе)
-            # Но для простоты пока оставим обычный find, так как база отсортирована по длине
-            if street in text_lower:
-                logger.info(f"[НАЙДЕНО] Улица: {street}")
-                return street
+        # Захват "дома №33 по " или "д. 5 на "
+        prefix_house = r"(?:(?i:д\.|дом[а-я]{0,2}|д)\s*(?:№)?\s*(\d+[а-яА-ЯёЁ]?(?:[/\-]\d+)?)\s+(?:по\s+|на\s+)?)?"
         
-        return None
-    
-    def extract_building_number(self, text: str, street: str) -> Optional[str]:
-        """
-        Извлекает номер дома после названия улицы.
-        Примеры: 
-        - "улица ленина 5" → "5"
-        - "ул. ленина, д. 10" → "10"
-        - "ленина-15а" → "15а"
-        """
-        text_lower = text.lower()
-        street_pos = text_lower.find(street)
-        if street_pos == -1: return None
+        # Захват номера дома после: "ул. Ленина, д. 5", "ул. Ленина №33", "ул. Вологодская, 1/2" 
+        # Достаточным условием теперь является либо наличие маркера (д., дом), либо ЗАПЯТАЯ + цифра
+        suffix_house = r"(?:\s*(?:[,]\s*(?:(?i:д\.|дом[а-я]{0,2}|д\.?|№))?\s*|(?i:д\.|дом[а-я]{0,2}|д\.?|№)\s*)(\d+[а-яА-ЯёЁ]?(?:[/\-]\d+)?))?"
         
-        # Текст после улицы (увеличим окно до 20 символов, т.к. номер обычно близко)
-        text_after = text_lower[street_pos + len(street):]
-        # Берем только начало строки, до первой точки или конца предложения, но не слишком много
-        # Regex search сам найдет нужное в начале строки
-        
-        # Паттерны для поиска номера дома
-        # 1. С явным указателем "дом/д."
-        # 2. Через дефис (Ленина-5)
-        # 3. Просто число после запятой или пробела, но фильтруем года (19xx, 20xx)
-        
-        patterns = [
-            r'[,\s]+(?:дом|д\.?|дома)\s*(\d+[а-я]?(?:[/\-]\d+)?)',  # "д. 5", "дом 10а", "д.5/1"
-            r'[ \t]*-[ \t]*(\d+[а-я]?(?:[/\-]\d+)?)',               # "Ленина-5"
-            r'[,\s]+(\d+[а-я]?(?:[/\-]\d+)?)'                       # ", 5", " 10а"
-        ]
-        
-        for pattern in patterns:
-            # Ищем только в начале text_after (до 20 символов)
-            snippet = text_after[:20]
-            match = re.match(pattern, snippet) # Используем match, чтобы искать от начала фрагмента
-            if match:
-                number = match.group(1)
-                
-                # Фильтр годов (1900-2099), если число простое (без букв и дробей)
-                if number.isdigit() and 1900 <= int(number) <= 2099:
-                    continue
+        pattern1 = r"\b" + prefix_house + r"(?:" + markers + r")\s+" + name + suffix_house
+        pattern2 = r"\b" + prefix_house + name + r"\s+(?:" + markers + r")\b" + suffix_house
+
+        all_matches = []
+
+        # Поиск по шаблону 1: ул. Ленина (БЕЗ re.IGNORECASE, чтобы [А-ЯЁ] работал корректно)
+        for match in re.finditer(pattern1, text):
+            found_str = match.group(0).strip()
+            # Индексы групп в регулярке: 1 = префикс-дом, 2 = название улицы, 3 = суффикс-дом
+            if "архангельск" in match.group(2).lower(): continue
+            
+            house_num = match.group(1) or match.group(3)
+            all_matches.append((found_str, house_num))
+            
+        # Поиск по шаблону 2: Троицкий проспект
+        for match in re.finditer(pattern2, text):
+            found_str = match.group(0).strip()
+            if "архангельск" in match.group(2).lower(): continue
+            
+            house_num = match.group(1) or match.group(3)
+            all_matches.append((found_str, house_num))
+
+        if not all_matches:
+            return None
+
+        # 1. Приоритет: ищем адрес, у которого захвачен логичный номер дома
+        for found_str, house_num in all_matches:
+            if house_num:
+                # Фильтруем ложные срабатывания типа "ул. Ленина 2024" (год)
+                if not re.match(r'^(19|20)\d{2}$', house_num):
+                    return found_str
                     
-                logger.info(f"[НОМЕР] Дом: {number}")
-                return number
-        
-        return None
-    
+        # 2. Если номеров домов нет, берем первый попавшийся адрес
+        first_match = all_matches[0][0]
+        # Если случайно захватился год в конце первого адреса, отрежем его для надежности
+        year_match = re.search(r'\s+(19|20)\d{2}$', first_match)
+        if year_match:
+            first_match = first_match[:year_match.start()]
+            
+        return first_match
+
     def geocode_with_yandex(self, address: str) -> Optional[List[float]]:
-        """
-        Геокодирует адрес через Yandex API с кэшированием.
-        """
         if not address: return None
         
+        # Если в адресе явно не указан город, добавляем, чтобы геокодер искал внутри Архангельска
+        if "архангельск" not in address.lower() and "северодвинск" not in address.lower():
+            query_address = f"Архангельск, {address}"
+        else:
+            query_address = address
+
         # 1. Проверяем кэш
-        if address in self.cache:
-            logger.info(f"[CACHE] ✅ Найдено: {address}")
-            return self.cache[address]
+        if query_address in self.cache:
+            logger.info(f"[CACHE] ✅ Найдено: {query_address}")
+            return self.cache[query_address]
         
         try:
             url = (
                 f"https://geocode-maps.yandex.ru/1.x/?apikey={GEOCODER_API_KEY}"
-                f"&geocode={requests.utils.quote(address)}&format=json&results=1"
+                f"&geocode={requests.utils.quote(query_address)}&format=json&results=1"
                 f"&bbox={ARKH_OBLAST_BBOX}&rspn=1"
             )
             
-            logger.info(f"[YANDEX] Запрос: {address}")
             response = requests.get(url, timeout=10)
             
             if response.status_code == 200:
@@ -148,17 +124,12 @@ class SimpleGeocoder:
                     lon, lat = map(float, pos.split())
                     coords = [lat, lon]
                     
-                    # Сохраняем в кэш
-                    self.cache[address] = coords
+                    self.cache[query_address] = coords
                     self._save_cache()
                     
-                    logger.info(f"[YANDEX] ✅ Координаты: {coords}")
                     return coords
-                else:
-                    logger.info(f"[YANDEX] ❌ Адрес не найден")
             else:
                 logger.error(f"[YANDEX] ❌ HTTP {response.status_code}")
-                
         except Exception as e:
             logger.error(f"[YANDEX] ❌ Ошибка: {e}")
         
@@ -168,22 +139,16 @@ class SimpleGeocoder:
         """
         Обрабатывает текст новости и возвращает (адрес, координаты).
         """
-        full_text = f"{title} {content}"
+        full_text = f"{title}. {content}"
         
-        street = self.find_street_in_text(full_text)
-        if not street:
+        address = self.extract_address_from_text(full_text)
+        if not address:
             return None, None
-        
-        building = self.extract_building_number(full_text, street)
-        
-        if building:
-            address = f"Архангельск, {street}, {building}"
-        else:
-            address = f"Архангельск, {street}"
         
         coords = self.geocode_with_yandex(address)
         
+        # Если Yandex API не нашел ничего, попробуем почистить адрес
+        # (часто Yandex API плохо понимает слова с опечатками, или если адрес слишком сложный)
+        # Мы оставляем первый найденный
+        
         return address, coords
-
-
-# === ТЕСТИРОВАНИЕ ===

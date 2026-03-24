@@ -1,0 +1,200 @@
+/* Модальное окно поверх всего */
+.admin-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.admin-modal-content {
+    background: #ffffff;
+    color: #000000;
+    border-radius: 12px;
+    padding: 30px;
+    position: relative;
+    box-shadow: none;
+    border: 1px solid var(--border-light);
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+}
+
+/* При вводе пароля окно маленькое, после — большое */
+.admin-modal-small {
+    width: 90%;
+    max-width: 400px;
+}
+
+.admin-modal-large {
+    width: 95%;
+    max-width: 1000px;
+}
+
+.admin-close-btn {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background: transparent;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #000000;
+    line-height: 1;
+}
+
+.admin-login-box h2 {
+    margin-top: 0;
+    text-align: center;
+}
+
+.admin-login-box form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.admin-login-box input {
+    padding: 12px;
+    border: 1px solid #dddddd;
+    border-radius: 8px;
+    font-size: 16px;
+    outline: none;
+    background: #ffffff;
+    color: #000000;
+}
+
+.admin-login-box button {
+    padding: 12px;
+    background-color: #0d6efd;
+    color: #ffffff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.2s;
+}
+
+.admin-login-box button:hover {
+    background-color: #0b5ed7;
+}
+
+.admin-error {
+    color: #dc3545;
+    margin-top: 15px;
+    font-weight: bold;
+    text-align: center;
+}
+
+.admin-logs-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.admin-header h2 {
+    margin: 0;
+}
+
+.admin-logout-btn {
+    padding: 8px 16px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+}
+
+.admin-table-wrapper {
+    overflow-y: auto;
+    max-height: calc(90vh - 120px);
+    border-radius: 8px;
+    border: 1px solid #dddddd;
+    background: #ffffff;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #ffffff;
+}
+
+.admin-table th, .admin-table td {
+    padding: 12px 15px;
+    text-align: left;
+    border-bottom: 1px solid #eeeeee;
+    font-size: 14px;
+    color: #000000;
+}
+
+.admin-title-cell {
+    max-width: 300px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.admin-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #000000;
+    position: sticky;
+    top: 0;
+    /* Убеждаемся, что заголовок перекрывает скроллируемый контент */
+    z-index: 1; 
+}
+
+.addr-success {
+    color: #198754;
+    font-weight: bold;
+}
+
+.addr-error {
+    color: #dc3545;
+}
+
+/* Кнопка на главном экране (меняем для Modal) - ОСТАВЛЯЕМ её адаптивной для тёмной темы, так как она висит на самом сайте! */
+.admin-modal-trigger {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background-color: rgba(0, 0, 0, 0.2);
+    color: var(--text-dark);
+    padding: 8px 12px;
+    border-radius: 20px;
+    border: none;
+    font-size: 12px;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+    transition: background-color 0.2s;
+    z-index: 9999;
+}
+
+.admin-modal-trigger:hover {
+    background-color: rgba(0, 0, 0, 0.5);
+    color: white;
+}
+
+body.dark-mode .admin-modal-trigger {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-mode .admin-modal-trigger:hover {
+    background-color: rgba(255, 255, 255, 0.3);
+}

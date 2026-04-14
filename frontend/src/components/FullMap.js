@@ -1,4 +1,4 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, useState } from 'react';
 import { YMaps, Map, Placemark, ZoomControl, FullscreenControl } from '@pbe/react-yandex-maps';
 import '../styles/FullMap.css';
 
@@ -16,15 +16,19 @@ const DEFAULT_ZOOM = 10;
 export default function FullMap({ news }) {
     const mapRef = useRef(null);
     const ymapsRef = useRef(null);
+    const [displayCount, setDisplayCount] = useState(5);
 
-    // Подготовка данных: фильтрация и сортировка
-    const activeNews = useMemo(() => {
+    // Подготовка данных: фильтрация и сортировка всех новостей с гео
+    const allActiveNews = useMemo(() => {
         if (!Array.isArray(news)) return [];
         return news
             .filter(item => item && item.coords && Array.isArray(item.coords))
             .sort((a, b) => new Date(b.date) - new Date(a.date))
-            .slice(0, 5); // Оставляем только 5 последних
     }, [news]);
+
+    const activeNews = useMemo(() => {
+        return allActiveNews.slice(0, displayCount);
+    }, [allActiveNews, displayCount]);
 
     // Обработчик загрузки API
     const handleApiLoad = (ymaps) => {
@@ -66,11 +70,22 @@ export default function FullMap({ news }) {
                                     key={item.id}
                                     geometry={item.coords}
                                     properties={{
-                                        // Убираем описание, оставляем только маркер
-                                        hintContent: item.title
+                                        // Красивая всплывающая карточка при наведении, завязанная на CSS переменные темы
+                                        hintContent: `
+                                            <div style="width: 420px; padding: 14px; background: var(--bg-card); border-radius: 16px; font-family: 'Inter', sans-serif; white-space: normal; overflow-wrap: break-word; box-sizing: border-box; box-shadow: 0 8px 24px rgba(0,0,0,0.2); border: 1px solid var(--border);">
+                                                ${item.image ? `<img src="${item.image}" style="width: 100%; height: 220px; object-fit: cover; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 4px 8px rgba(0,0,0,0.15);" />` : ''}
+                                                <div style="font-weight: 700; font-size: 16px; line-height: 1.4; color: var(--text-primary); margin-bottom: 2px; word-break: break-word;">
+                                                    ${item.title}
+                                                </div>
+                                            </div>
+                                        `
                                     }}
                                     options={{
-                                        preset: 'islands#lightBlueCircleDotIcon' // Голубоватый цвет
+                                        preset: 'islands#lightBlueCircleDotIcon',
+                                        hintOpenTimeout: 100 // Чтобы быстрее появлялось
+                                    }}
+                                    onClick={() => {
+                                        window.location.hash = `#/news/${item.id}`;
                                     }}
                                 />
                             ))}
@@ -94,21 +109,23 @@ export default function FullMap({ news }) {
                                         <span className="mini-news-category">{item.category}</span>
                                     </div>
                                     <h4 className="mini-news-title">{item.title}</h4>
-                                    <button
-                                        className="map-read-more-btn"
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            window.location.hash = `#/news/${item.id}`;
-                                        }}
-                                    >
-                                        Читать далее
-                                    </button>
+                                    {/* Кнопка "Читать далее" удалена по запросу */}
                                 </div>
                             ))
                         ) : (
                             <div className="map-loading-state">
                                 <p>Нет событий с координатами</p>
                             </div>
+                        )}
+                        {/* Кнопка загрузки старых новостей */}
+                        {allActiveNews.length > displayCount && (
+                            <button 
+                                className="map-read-more-btn" 
+                                style={{ marginTop: '10px' }}
+                                onClick={() => setDisplayCount(prev => prev + 5)}
+                            >
+                                Показать ещё
+                            </button>
                         )}
                     </div>
                 </div>

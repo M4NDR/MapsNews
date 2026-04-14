@@ -181,3 +181,46 @@ def get_admin_logs(limit=200):
     rows = c.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+def reset_news_geocode(news_id: int) -> bool:
+    """Очищает данные геокодирования для новости, заставляя парсер искать координаты заново"""
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    # Сбрасываем address в NULL (не в пустую строку!), чтобы геокодер снова обработал новость
+    # Также сбрасываем coords и geocoded_at
+    cursor.execute("""
+        UPDATE news
+        SET address = NULL, coords = NULL, geocoded_at = NULL
+        WHERE id = ?
+    """, (news_id,))
+    success = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return success
+
+def get_uncoded_news(limit=10):
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    # Выбираем новости, где координаты не найдены И адрес ещё не установлен (NULL)
+    # Это включает новости, которые никогда не обрабатывались, и новости после сброса
+    # NOT_FOUND означает что геокодер уже искал и ничего не нашел - такие новости не берем
+    c.execute("SELECT * FROM news WHERE coords IS NULL AND address IS NULL ORDER BY date DESC LIMIT ?", (limit,))
+    rows = c.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+def force_geocode_news(news_id: int):
+    """Принудительно запускает геокодирование для конкретной новости"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    c = conn.cursor()
+    c.execute("SELECT * FROM news WHERE id = ?", (news_id,))
+    row = c.fetchone()
+    conn.close()
+    
+    if not row:
+        return None
+    
+    item = dict(row)
+    return item

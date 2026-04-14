@@ -18,7 +18,8 @@
 .full-map-layout {
     display: flex;
     gap: 24px;
-    height: 700px;
+    height: 85vh; /* Раньше было 700px, теперь карта занимает почти весь экран */
+    min-height: 750px;
 }
 
 /* Обертка карты */
@@ -35,10 +36,10 @@
 
 /* Сайдбар */
 .map-mini-sidebar {
-    width: 350px;
+    width: 280px; /* Уменьшили ширину сайдбара, чтобы отдать больше места карте */
     background: var(--bg-card, #242424);
     border-radius: 24px;
-    padding: 24px;
+    padding: 24px 16px; /* Чуть меньше боковых отступов */
     display: flex;
     flex-direction: column;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
@@ -213,4 +214,17 @@
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* Глобальное обнуление дефолтных всплывашек от Яндекс.Карт */
+/* Это нужно, чтобы наша <div ... background: var(--bg-card)> была единственным фоном! */
+[class*="-hint__text"] {
+    background: transparent !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+[class*="-hint__tail"] {
+    display: none !important; /* Убираем белую дефолтную галочку/хвост */
 }

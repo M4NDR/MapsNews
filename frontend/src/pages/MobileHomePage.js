@@ -15,7 +15,9 @@ export default function MobileHomePage({
     loadMore,
     category,
     search,
-    setSearch
+    setSearch,
+    onlyWithCoords,
+    setOnlyWithCoords
 }) {
     return (
         <div className="mobile-home-container">
@@ -51,6 +53,16 @@ export default function MobileHomePage({
                     </div>
                 )}
             </main>
+
+            {/* Плавающая кнопка фильтра с координатами (находится слева-внизу) */}
+            {category !== "на карте" && (
+                <button 
+                    className={`floating-geomark-btn ${onlyWithCoords ? 'active' : ''}`}
+                    onClick={() => setOnlyWithCoords(!onlyWithCoords)}
+                >
+                    {onlyWithCoords ? '🎯 Сбросить фильтр геометок' : '🌍 Только с геометкой'}
+                </button>
+            )}
         </div>
     );
 }

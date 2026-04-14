@@ -19,6 +19,7 @@ export default function HomePage() {
   const [searchParams] = useSearchParams();
   const category = searchParams.get("category") || "все";
   const [search, setSearch] = useState("");
+  const [onlyWithCoords, setOnlyWithCoords] = useState(false);
 
   // Определение мобильного экрана
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
@@ -70,10 +71,16 @@ export default function HomePage() {
 
     if (category === "на карте") {
       filtered = filtered.filter(item => item && item.coords);
-    } else if (category && category !== "все") {
-      filtered = filtered.filter(item =>
-        item && item.category && item.category.toLowerCase() === category.toLowerCase()
-      );
+    } else {
+      if (category && category !== "все") {
+        filtered = filtered.filter(item =>
+          item && item.category && item.category.toLowerCase() === category.toLowerCase()
+        );
+      }
+      
+      if (onlyWithCoords) {
+        filtered = filtered.filter(item => item && item.coords);
+      }
     }
 
     if (search) {
@@ -87,7 +94,7 @@ export default function HomePage() {
     const endIndex = page * ITEMS_PER_PAGE;
     setDisplayedNews(filtered.slice(0, endIndex));
     setHasMore(endIndex < filtered.length);
-  }, [allNews, search, page, category]);
+  }, [allNews, search, page, category, onlyWithCoords]);
 
   const loadMore = () => {
     setPage(prev => prev + 1);
@@ -105,11 +112,13 @@ export default function HomePage() {
         category={category}
         search={search}
         setSearch={setSearch}
+        onlyWithCoords={onlyWithCoords}
+        setOnlyWithCoords={setOnlyWithCoords}
       />
     );
   }
 
-  // ДЕКСТОПНАЯ ВЕРСИЯ (без изменений)
+  // ДЕКСТОПНАЯ ВЕРСИЯ
   return (
     <>
       <header className="header">
@@ -121,6 +130,17 @@ export default function HomePage() {
           <ThemeToggle />
         </div>
       </header>
+
+      {/* Плавающая кнопка фильтра с координатами (находится слева-внизу) */}
+      {category !== "на карте" && (
+        <button 
+          className={`floating-geomark-btn ${onlyWithCoords ? 'active' : ''}`}
+          onClick={() => setOnlyWithCoords(!onlyWithCoords)}
+        >
+          {onlyWithCoords ? '🎯 Сбросить фильтр геометок' : '🌍 Только с геометкой'}
+        </button>
+      )}
+
       {category === "на карте" ? (
         <div className="full-map-container">
           <FullMap news={allNews} />

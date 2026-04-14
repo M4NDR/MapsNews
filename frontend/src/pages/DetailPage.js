@@ -68,15 +68,18 @@ export default function DetailPage() {
 
   // Проверка валидности координат (массив из 2 чисел, не NaN)
   const isValidCoords = (c) => Array.isArray(c) && c.length === 2 && Number.isFinite(c[0]) && Number.isFinite(c[1]);
-  const mapCoords = isValidCoords(newsItem.coords) ? newsItem.coords : DEFAULT_COORDS;
+  const hasCoords = isValidCoords(newsItem.coords);
+  const mapCoords = hasCoords ? newsItem.coords : [64.5401, 40.5433]; // Fallback
 
   return (
-    <div className={`detail-layout ${mapOpen ? 'map-open' : ''}`}>
-      {/* ЛЕВАЯ ЧАСТЬ — КАРТА */}
+    <div className={`detail-layout ${mapOpen && hasCoords ? 'map-open' : ''}`}>
+      {/* ЛЕВАЯ ЧАСТЬ — КАРТА (Пустой блок для сетки, если нет координат) */}
       <div className="map-container">
-        <ErrorBoundary fallback={<div className="map-error">Ошибка карты</div>}>
-          <MapSidebar coords={mapCoords} isOpen={mapOpen} />
-        </ErrorBoundary>
+        {hasCoords && (
+          <ErrorBoundary fallback={<div className="map-error">Ошибка карты</div>}>
+            <MapSidebar coords={mapCoords} isOpen={mapOpen} />
+          </ErrorBoundary>
+        )}
       </div>
 
       {/* ПРАВАЯ ЧАСТЬ — НОВОСТЬ */}
@@ -87,12 +90,14 @@ export default function DetailPage() {
           <button onClick={() => navigate(-1)} className="nav-btn back-btn">
             ← Назад
           </button>
-          <button
-            className={`nav-btn map-btn ${mapOpen ? 'active' : ''}`}
-            onClick={() => setMapOpen(!mapOpen)}
-          >
-            {mapOpen ? 'Скрыть карту' : 'Показать на карте'}
-          </button>
+          {hasCoords && (
+            <button
+              className={`nav-btn map-btn ${mapOpen ? 'active' : ''}`}
+              onClick={() => setMapOpen(!mapOpen)}
+            >
+              {mapOpen ? 'Скрыть карту' : 'Показать на карте'}
+            </button>
+          )}
 
           <Link to="/" className="nav-site-logo">Новостные карты</Link>
         </div>
@@ -123,11 +128,6 @@ export default function DetailPage() {
               dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(newsItem.content) }}
             />
 
-            {!newsItem.coords && mapOpen && (
-              <div className="map-warning">
-                ⚠️ Точный адрес не найден, показан центр города.
-              </div>
-            )}
           </article>
         </div>
 
